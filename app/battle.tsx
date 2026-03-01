@@ -45,6 +45,7 @@ export default function BattleScreen() {
   const [status, setStatus] = useState<GameStatus>('countdown');
   const [countdown, setCountdown] = useState(COUNTDOWN);
   const [opponentBoard, setOpponentBoard] = useState<Board>(createBoard);
+  const [opponentScore, setOpponentScore] = useState(0);
   const [garbageQueue, setGarbageQueue] = useState(0);
 
   const boardRef = useRef<Board>(createBoard());
@@ -67,8 +68,22 @@ export default function BattleScreen() {
   }, []);
 
   const broadcastBoard = useCallback(() => {
-    sendWs({ type: 'game_event', roomId: roomIdRef.current, eventType: 'board', data: { board: boardRef.current } });
+    sendWs({ 
+      type: 'game_event', 
+      roomId: roomIdRef.current, 
+      eventType: 'board', 
+      data: { 
+        board: boardRef.current,
+        score: scoreRef.current 
+      } 
+    });
   }, [sendWs]);
+
+  useEffect(() => {
+    if (status === 'playing') {
+      broadcastBoard();
+    }
+  }, [score, status, broadcastBoard]);
 
   const spawnNext = useCallback(() => {
     const type = nextTypeRef.current;
@@ -135,6 +150,9 @@ export default function BattleScreen() {
         Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
       } else if (data.eventType === 'board') {
         setOpponentBoard(data.data?.board ?? createBoard());
+        if (typeof data.data?.score === 'number') {
+          setOpponentScore(data.data.score);
+        }
       } else if (data.eventType === 'game_over') {
         statusRef.current = 'won'; setStatus('won');
         if (dropTimer.current) clearTimeout(dropTimer.current);
@@ -233,7 +251,7 @@ export default function BattleScreen() {
 
           <LinearGradient colors={[COLORS.player2 + '44', COLORS.player2 + 'cc']} style={[styles.scorePill, { alignItems: 'flex-end' }]}>
             <Text style={styles.scorePillLabel}>#{opponentId}</Text>
-            <Text style={styles.scorePillValue}>???</Text>
+            <Text style={styles.scorePillValue}>{opponentScore.toLocaleString()}</Text>
           </LinearGradient>
         </View>
       </View>
