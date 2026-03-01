@@ -77,11 +77,19 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       if (msg.type === 'register') {
         let id = msg.playerId;
-        if (!id || players.has(id)) {
+        if (!id) {
           id = generatePlayerId();
+        } else if (players.has(id)) {
+          const existing = players.get(id)!;
+          existing.ws.onclose = null;
+          if (existing.ws.readyState === WebSocket.OPEN) {
+            existing.ws.close();
+          }
+          console.log(`Player ${id} re-registered (replacing old connection)`);
         }
         playerId = id;
         players.set(id, { ws, playerId: id });
+        console.log(`Player registered: ${id} | Total online: ${players.size}`);
         send(ws, { type: 'registered', playerId: id });
         return;
       }

@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import {
   View, Text, StyleSheet, Pressable, TextInput, Platform, ActivityIndicator,
   Keyboard,
@@ -10,7 +10,7 @@ import * as Haptics from 'expo-haptics';
 import { usePlayer } from '@/context/PlayerContext';
 import COLORS from '@/constants/colors';
 
-type LobbyStatus = 'idle' | 'sending' | 'waiting' | 'incoming';
+type LobbyStatus = 'idle' | 'sending' | 'waiting';
 
 export default function LobbyScreen() {
   const insets = useSafeAreaInsets();
@@ -21,8 +21,6 @@ export default function LobbyScreen() {
   const [targetId, setTargetId] = useState('');
   const [lobbyStatus, setLobbyStatus] = useState<LobbyStatus>('idle');
   const [errorMsg, setErrorMsg] = useState('');
-  const [incomingFrom, setIncomingFrom] = useState('');
-  const [pendingRoomId, setPendingRoomId] = useState('');
 
   useEffect(() => {
     const unsub1 = onWsEvent('invite_sent', () => {
@@ -39,20 +37,7 @@ export default function LobbyScreen() {
       setErrorMsg('Player declined your invite.');
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
     });
-    const unsub4 = onWsEvent('invited', (data: any) => {
-      setIncomingFrom(data.fromId);
-      setPendingRoomId(data.roomId);
-      setLobbyStatus('incoming');
-      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-    });
-    const unsub5 = onWsEvent('game_start', (data: any) => {
-      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-      router.push({
-        pathname: '/battle',
-        params: { roomId: data.roomId, opponentId: data.opponentId },
-      });
-    });
-    return () => { unsub1(); unsub2(); unsub3(); unsub4(); unsub5(); };
+    return () => { unsub1(); unsub2(); unsub3(); };
   }, [onWsEvent]);
 
   const handleInvite = () => {
@@ -69,17 +54,6 @@ export default function LobbyScreen() {
     setLobbyStatus('sending');
     Keyboard.dismiss();
     sendWs({ type: 'invite', targetId: id });
-  };
-
-  const handleAccept = () => {
-    sendWs({ type: 'respond_invite', roomId: pendingRoomId, accept: true });
-  };
-
-  const handleDecline = () => {
-    sendWs({ type: 'respond_invite', roomId: pendingRoomId, accept: false });
-    setLobbyStatus('idle');
-    setIncomingFrom('');
-    setPendingRoomId('');
   };
 
   const handleCancel = () => {
@@ -102,31 +76,15 @@ export default function LobbyScreen() {
         <View style={styles.myIdCard}>
           <Text style={styles.myIdLabel}>YOUR ID</Text>
           <Text style={styles.myId}>{playerId ?? '-----'}</Text>
-          <Text style={styles.myIdHint}>Share with your opponent</Text>
+          <Text style={styles.myIdHint}>Share this with your opponent</Text>
         </View>
 
-        {lobbyStatus === 'incoming' ? (
-          <View style={styles.incomingCard}>
-            <MaterialCommunityIcons name="sword-cross" size={40} color={COLORS.cyan} />
-            <Text style={styles.incomingTitle}>CHALLENGE!</Text>
-            <Text style={styles.incomingFrom}>Player <Text style={{ color: COLORS.cyan }}>{incomingFrom}</Text></Text>
-            <Text style={styles.incomingFrom}>wants to battle you</Text>
-            <View style={styles.incomingActions}>
-              <Pressable style={[styles.actionBtn, { backgroundColor: COLORS.cyan }]} onPress={handleAccept}>
-                <Ionicons name="checkmark" size={20} color={COLORS.bg} />
-                <Text style={[styles.actionBtnText, { color: COLORS.bg }]}>ACCEPT</Text>
-              </Pressable>
-              <Pressable style={[styles.actionBtn, { borderColor: COLORS.red, borderWidth: 1 }]} onPress={handleDecline}>
-                <Ionicons name="close" size={20} color={COLORS.red} />
-                <Text style={[styles.actionBtnText, { color: COLORS.red }]}>DECLINE</Text>
-              </Pressable>
-            </View>
-          </View>
-        ) : lobbyStatus === 'waiting' ? (
+        {lobbyStatus === 'waiting' ? (
           <View style={styles.waitingCard}>
             <ActivityIndicator color={COLORS.cyan} size="large" />
             <Text style={styles.waitingText}>WAITING FOR RESPONSE</Text>
             <Text style={styles.waitingSubtext}>Invite sent to {targetId}</Text>
+            <Text style={styles.waitingSubtext}>The other player will see a pop-up on their screen</Text>
             <Pressable style={styles.cancelBtn} onPress={handleCancel}>
               <Text style={styles.cancelBtnText}>CANCEL</Text>
             </Pressable>
@@ -315,10 +273,10 @@ const styles = StyleSheet.create({
     backgroundColor: COLORS.bgCard,
     borderRadius: 14,
     borderWidth: 1,
-    borderColor: COLORS.border,
+    borderColor: COLORS.cyan + '44',
     padding: 32,
     alignItems: 'center',
-    gap: 16,
+    gap: 12,
   },
   waitingText: {
     fontFamily: 'Orbitron_700Bold',
@@ -330,7 +288,8 @@ const styles = StyleSheet.create({
     fontFamily: 'Orbitron_400Regular',
     fontSize: 10,
     color: COLORS.textSecondary,
-    letterSpacing: 1,
+    letterSpacing: 0.5,
+    textAlign: 'center',
   },
   cancelBtn: {
     paddingVertical: 10,
@@ -338,54 +297,12 @@ const styles = StyleSheet.create({
     borderRadius: 8,
     borderWidth: 1,
     borderColor: COLORS.textSecondary,
+    marginTop: 4,
   },
   cancelBtnText: {
     fontFamily: 'Orbitron_400Regular',
     fontSize: 11,
     color: COLORS.textSecondary,
-    letterSpacing: 2,
-  },
-  incomingCard: {
-    backgroundColor: COLORS.bgCard,
-    borderRadius: 14,
-    borderWidth: 1,
-    borderColor: COLORS.cyan + '66',
-    padding: 28,
-    alignItems: 'center',
-    gap: 8,
-  },
-  incomingTitle: {
-    fontFamily: 'Orbitron_900Black',
-    fontSize: 24,
-    color: COLORS.cyan,
-    letterSpacing: 4,
-    textShadowColor: COLORS.cyan,
-    textShadowOffset: { width: 0, height: 0 },
-    textShadowRadius: 12,
-  },
-  incomingFrom: {
-    fontFamily: 'Orbitron_400Regular',
-    fontSize: 12,
-    color: COLORS.textPrimary,
-    letterSpacing: 1,
-  },
-  incomingActions: {
-    flexDirection: 'row',
-    gap: 12,
-    marginTop: 16,
-  },
-  actionBtn: {
-    flex: 1,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 6,
-    paddingVertical: 14,
-    borderRadius: 10,
-  },
-  actionBtnText: {
-    fontFamily: 'Orbitron_700Bold',
-    fontSize: 12,
     letterSpacing: 2,
   },
   rules: {
