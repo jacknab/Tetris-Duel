@@ -7,6 +7,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
 import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
+import { useAudioPlayer } from 'expo-audio';
 import TetrisBoard from '@/components/TetrisBoard';
 import {
   createBoard, randomPieceType, spawnPiece, isValidPosition,
@@ -82,6 +83,19 @@ export default function GameScreen() {
   const levelRef = useRef(1);
   const dropTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const statusRef = useRef<GameStatus>('idle');
+  const rotatePlayer = useAudioPlayer(require('@/assets/sounds/rotate.mp3'));
+  const lockPlayer = useAudioPlayer(require('@/assets/sounds/lock.mp3'));
+  const clearPlayer = useAudioPlayer(require('@/assets/sounds/clear.mp3'));
+  const dropPlayer = useAudioPlayer(require('@/assets/sounds/drop.mp3'));
+
+  const playSound = useCallback((name: string) => {
+    try {
+      if (name === 'rotate') rotatePlayer.play();
+      if (name === 'lock') lockPlayer.play();
+      if (name === 'clear') clearPlayer.play();
+      if (name === 'drop') dropPlayer.play();
+    } catch (e) {}
+  }, [rotatePlayer, lockPlayer, clearPlayer, dropPlayer]);
 
   const syncState = useCallback(() => {
     setBoard([...boardRef.current]);
@@ -117,8 +131,10 @@ export default function GameScreen() {
       totalLinesRef.current += linesCleared;
       levelRef.current = calcLevel(totalLinesRef.current);
       Haptics.impactAsync(linesCleared >= 2 ? Haptics.ImpactFeedbackStyle.Heavy : Haptics.ImpactFeedbackStyle.Light);
+      playSound('clear');
     } else {
       Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+      playSound('lock');
     }
     spawnNext(); syncState();
   }, [spawnNext, syncState]);
@@ -172,6 +188,7 @@ export default function GameScreen() {
     if (dx !== null) {
       pieceRef.current = { ...pieceRef.current, x: pieceRef.current.x + dx, rotation: (pieceRef.current.rotation + 1) % 4 };
       syncState(); Haptics.selectionAsync();
+      playSound('rotate');
     }
   }, [syncState]);
 
@@ -190,6 +207,7 @@ export default function GameScreen() {
     scoreRef.current += dy * 2;
     pieceRef.current = { ...pieceRef.current, y: pieceRef.current.y + dy };
     syncState(); lockAndNext();
+    playSound('drop');
     if (dropTimer.current) clearTimeout(dropTimer.current);
     if (statusRef.current === 'playing') dropTimer.current = setTimeout(tick, calcDropInterval(levelRef.current));
   }, [lockAndNext, syncState, tick]);
