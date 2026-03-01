@@ -1,8 +1,8 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
-  View, Text, StyleSheet, Pressable, Platform,
-  Dimensions,
+  View, Text, StyleSheet, Pressable, Platform, Dimensions,
 } from 'react-native';
+import { LinearGradient } from 'expo-linear-gradient';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { router, useLocalSearchParams } from 'expo-router';
 import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
@@ -21,13 +21,12 @@ import COLORS from '@/constants/colors';
 const { width: SW, height: SH } = Dimensions.get('window');
 
 function calcCellSize() {
-  const availW = (SW - 60) * 0.58;
-  const availH = SH * 0.55;
+  const availW = (SW - 56) * 0.60;
+  const availH = SH * 0.52;
   return Math.floor(Math.min(availW / BOARD_COLS, availH / BOARD_ROWS));
 }
 
 type GameStatus = 'countdown' | 'playing' | 'won' | 'lost' | 'disconnected';
-
 const COUNTDOWN = 3;
 
 export default function BattleScreen() {
@@ -35,8 +34,7 @@ export default function BattleScreen() {
   const topInset = Platform.OS === 'web' ? 67 : insets.top;
   const bottomInset = Platform.OS === 'web' ? 34 : insets.bottom;
   const { roomId, opponentId } = useLocalSearchParams<{ roomId: string; opponentId: string }>();
-  const { sendWs, onWsEvent } = usePlayer();
-
+  const { sendWs, onWsEvent, playerId } = usePlayer();
   const cellSize = calcCellSize();
 
   const [board, setBoard] = useState<Board>(createBoard);
@@ -48,7 +46,6 @@ export default function BattleScreen() {
   const [countdown, setCountdown] = useState(COUNTDOWN);
   const [opponentBoard, setOpponentBoard] = useState<Board>(createBoard);
   const [garbageQueue, setGarbageQueue] = useState(0);
-  const [garbageAlert, setGarbageAlert] = useState(0);
 
   const boardRef = useRef<Board>(createBoard());
   const pieceRef = useRef<Piece | null>(null);
@@ -60,7 +57,6 @@ export default function BattleScreen() {
   const statusRef = useRef<GameStatus>('countdown');
   const garbageQueueRef = useRef(0);
   const roomIdRef = useRef(roomId);
-  const broadcastTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const syncState = useCallback(() => {
     setBoard([...boardRef.current]);
@@ -78,17 +74,14 @@ export default function BattleScreen() {
     const type = nextTypeRef.current;
     const newPiece = spawnPiece(type);
     nextTypeRef.current = randomPieceType();
-
     if (garbageQueueRef.current > 0) {
       const lines = garbageQueueRef.current;
       garbageQueueRef.current = 0;
       setGarbageQueue(0);
       boardRef.current = addGarbageLines(boardRef.current, lines);
     }
-
     if (!isValidPosition(boardRef.current, newPiece)) {
-      statusRef.current = 'lost';
-      setStatus('lost');
+      statusRef.current = 'lost'; setStatus('lost');
       if (dropTimer.current) clearTimeout(dropTimer.current);
       sendWs({ type: 'game_event', roomId: roomIdRef.current, eventType: 'game_over', data: {} });
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
@@ -104,16 +97,13 @@ export default function BattleScreen() {
     const { board: cleared, linesCleared } = clearLines(locked);
     boardRef.current = cleared;
     pieceRef.current = null;
-
     if (linesCleared > 0) {
-      const points = calcScore(linesCleared, levelRef.current);
-      scoreRef.current += points;
+      scoreRef.current += calcScore(linesCleared, levelRef.current);
       totalLinesRef.current += linesCleared;
       levelRef.current = calcLevel(totalLinesRef.current);
-
-      const garbageToSend = garbageLinesForClears(linesCleared);
-      if (garbageToSend > 0) {
-        sendWs({ type: 'game_event', roomId: roomIdRef.current, eventType: 'garbage', data: { lines: garbageToSend } });
+      const g = garbageLinesForClears(linesCleared);
+      if (g > 0) {
+        sendWs({ type: 'game_event', roomId: roomIdRef.current, eventType: 'garbage', data: { lines: g } });
         Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
       } else {
         Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
@@ -121,23 +111,16 @@ export default function BattleScreen() {
     } else {
       Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     }
-
-    broadcastBoard();
-    spawnNext();
-    syncState();
+    broadcastBoard(); spawnNext(); syncState();
   }, [spawnNext, syncState, sendWs, broadcastBoard]);
 
   const tick = useCallback(() => {
     if (statusRef.current !== 'playing') return;
     if (!pieceRef.current) return;
-
     if (isValidPosition(boardRef.current, pieceRef.current, 0, 1)) {
       pieceRef.current = { ...pieceRef.current, y: pieceRef.current.y + 1 };
       syncState();
-    } else {
-      lockAndNext();
-    }
-
+    } else { lockAndNext(); }
     if (statusRef.current === 'playing') {
       dropTimer.current = setTimeout(tick, calcDropInterval(levelRef.current));
     }
@@ -149,20 +132,17 @@ export default function BattleScreen() {
         const lines: number = data.data?.lines ?? 0;
         garbageQueueRef.current += lines;
         setGarbageQueue(q => q + lines);
-        setGarbageAlert(a => a + 1);
         Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
       } else if (data.eventType === 'board') {
         setOpponentBoard(data.data?.board ?? createBoard());
       } else if (data.eventType === 'game_over') {
-        statusRef.current = 'won';
-        setStatus('won');
+        statusRef.current = 'won'; setStatus('won');
         if (dropTimer.current) clearTimeout(dropTimer.current);
         Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
       }
     });
     const unsub2 = onWsEvent('opponent_disconnected', () => {
-      statusRef.current = 'disconnected';
-      setStatus('disconnected');
+      statusRef.current = 'disconnected'; setStatus('disconnected');
       if (dropTimer.current) clearTimeout(dropTimer.current);
     });
     return () => { unsub1(); unsub2(); };
@@ -175,12 +155,9 @@ export default function BattleScreen() {
       setCountdown(count);
       if (count <= 0) {
         clearInterval(interval);
-        statusRef.current = 'playing';
-        setStatus('playing');
-
+        statusRef.current = 'playing'; setStatus('playing');
         boardRef.current = createBoard();
-        const firstPiece = spawnPiece(nextTypeRef.current);
-        pieceRef.current = firstPiece;
+        pieceRef.current = spawnPiece(nextTypeRef.current);
         nextTypeRef.current = randomPieceType();
         syncState();
         dropTimer.current = setTimeout(tick, calcDropInterval(1));
@@ -189,26 +166,19 @@ export default function BattleScreen() {
     return () => clearInterval(interval);
   }, [tick, syncState]);
 
-  useEffect(() => {
-    return () => {
-      if (dropTimer.current) clearTimeout(dropTimer.current);
-      if (broadcastTimer.current) clearTimeout(broadcastTimer.current);
-    };
-  }, []);
+  useEffect(() => () => { if (dropTimer.current) clearTimeout(dropTimer.current); }, []);
 
   const moveLeft = useCallback(() => {
     if (statusRef.current !== 'playing' || !pieceRef.current) return;
     if (isValidPosition(boardRef.current, pieceRef.current, -1)) {
-      pieceRef.current = { ...pieceRef.current, x: pieceRef.current.x - 1 };
-      syncState();
+      pieceRef.current = { ...pieceRef.current, x: pieceRef.current.x - 1 }; syncState();
     }
   }, [syncState]);
 
   const moveRight = useCallback(() => {
     if (statusRef.current !== 'playing' || !pieceRef.current) return;
     if (isValidPosition(boardRef.current, pieceRef.current, 1)) {
-      pieceRef.current = { ...pieceRef.current, x: pieceRef.current.x + 1 };
-      syncState();
+      pieceRef.current = { ...pieceRef.current, x: pieceRef.current.x + 1 }; syncState();
     }
   }, [syncState]);
 
@@ -216,13 +186,8 @@ export default function BattleScreen() {
     if (statusRef.current !== 'playing' || !pieceRef.current) return;
     const dx = wallKick(boardRef.current, pieceRef.current, 1);
     if (dx !== null) {
-      pieceRef.current = {
-        ...pieceRef.current,
-        x: pieceRef.current.x + dx,
-        rotation: (pieceRef.current.rotation + 1) % 4,
-      };
-      syncState();
-      Haptics.selectionAsync();
+      pieceRef.current = { ...pieceRef.current, x: pieceRef.current.x + dx, rotation: (pieceRef.current.rotation + 1) % 4 };
+      syncState(); Haptics.selectionAsync();
     }
   }, [syncState]);
 
@@ -230,8 +195,7 @@ export default function BattleScreen() {
     if (statusRef.current !== 'playing' || !pieceRef.current) return;
     if (isValidPosition(boardRef.current, pieceRef.current, 0, 1)) {
       pieceRef.current = { ...pieceRef.current, y: pieceRef.current.y + 1 };
-      scoreRef.current += 1;
-      syncState();
+      scoreRef.current += 1; syncState();
     }
   }, [syncState]);
 
@@ -241,35 +205,54 @@ export default function BattleScreen() {
     while (isValidPosition(boardRef.current, pieceRef.current, 0, dy + 1)) dy++;
     scoreRef.current += dy * 2;
     pieceRef.current = { ...pieceRef.current, y: pieceRef.current.y + dy };
-    syncState();
-    lockAndNext();
+    syncState(); lockAndNext();
     if (dropTimer.current) clearTimeout(dropTimer.current);
-    if (statusRef.current === 'playing') {
-      dropTimer.current = setTimeout(tick, calcDropInterval(levelRef.current));
-    }
+    if (statusRef.current === 'playing') dropTimer.current = setTimeout(tick, calcDropInterval(levelRef.current));
   }, [lockAndNext, syncState, tick]);
 
   const isGameOver = status === 'won' || status === 'lost' || status === 'disconnected';
 
   return (
-    <View style={[styles.container, { paddingTop: topInset }]}>
-      <View style={styles.topBar}>
-        <Pressable onPress={() => router.back()} style={styles.iconBtn}>
-          <Ionicons name="chevron-back" size={24} color={COLORS.textSecondary} />
-        </Pressable>
-        <View style={styles.scoreRow}>
-          <Text style={styles.scoreText}>{score.toLocaleString()}</Text>
-          <Text style={styles.levelText}>LVL {level}</Text>
+    <View style={styles.root}>
+      <LinearGradient
+        colors={['#001a5a', '#12003a', '#4a001a']}
+        start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }}
+        style={StyleSheet.absoluteFill}
+      />
+
+      <View style={{ paddingTop: topInset }}>
+        <View style={styles.vsBar}>
+          <LinearGradient colors={[COLORS.player1 + 'cc', COLORS.player1 + '44']} style={styles.scorePill}>
+            <Text style={styles.scorePillLabel}>YOU</Text>
+            <Text style={styles.scorePillValue}>{score.toLocaleString()}</Text>
+          </LinearGradient>
+
+          <Pressable onPress={() => router.back()} style={styles.vsIcon}>
+            <MaterialCommunityIcons name="sword-cross" size={22} color="rgba(255,255,255,0.5)" />
+          </Pressable>
+
+          <LinearGradient colors={[COLORS.player2 + '44', COLORS.player2 + 'cc']} style={[styles.scorePill, { alignItems: 'flex-end' }]}>
+            <Text style={styles.scorePillLabel}>#{opponentId}</Text>
+            <Text style={styles.scorePillValue}>???</Text>
+          </LinearGradient>
         </View>
-        <View style={styles.iconBtn} />
+      </View>
+
+      <View style={styles.linesRow}>
+        <Text style={styles.linesText}>LVL {level}  ·  {totalLines} LINES</Text>
+        {garbageQueue > 0 && (
+          <View style={styles.garbageTag}>
+            <Text style={styles.garbageTagText}>+{garbageQueue} INCOMING</Text>
+          </View>
+        )}
       </View>
 
       <View style={styles.gameArea}>
         <View style={styles.mySection}>
           {garbageQueue > 0 && (
-            <View style={styles.garbageIndicator}>
-              {Array.from({ length: Math.min(garbageQueue, 8) }).map((_, i) => (
-                <View key={i} style={styles.garbageBar} />
+            <View style={styles.garbageCol}>
+              {Array.from({ length: Math.min(garbageQueue, 10) }).map((_, i) => (
+                <LinearGradient key={i} colors={[COLORS.orange, COLORS.red]} style={styles.garbageBar} />
               ))}
             </View>
           )}
@@ -277,13 +260,14 @@ export default function BattleScreen() {
         </View>
 
         <View style={styles.divider}>
-          <View style={styles.dividerLine} />
-          <MaterialCommunityIcons name="sword-cross" size={20} color={COLORS.textDim} />
-          <View style={styles.dividerLine} />
+          <LinearGradient colors={['transparent', 'rgba(255,255,255,0.2)', 'transparent']} style={styles.dividerLine} />
+          <View style={styles.dividerBolt}>
+            <Text style={styles.boltText}>⚡</Text>
+          </View>
+          <LinearGradient colors={['transparent', 'rgba(255,255,255,0.2)', 'transparent']} style={styles.dividerLine} />
         </View>
 
         <View style={styles.opponentSection}>
-          <Text style={styles.opponentLabel}>#{opponentId}</Text>
           <MiniBoard board={opponentBoard} />
         </View>
       </View>
@@ -291,21 +275,21 @@ export default function BattleScreen() {
       <View style={[styles.controls, { paddingBottom: bottomInset + 4 }]}>
         <View style={styles.controlRow}>
           <Pressable style={styles.ctrlBtn} onPressIn={moveLeft}>
-            <Ionicons name="chevron-back" size={26} color={COLORS.textPrimary} />
+            <Ionicons name="chevron-back" size={26} color={COLORS.white} />
           </Pressable>
-          <Pressable style={[styles.ctrlBtn, styles.ctrlBtnCenter]} onPress={rotatePiece}>
-            <MaterialCommunityIcons name="rotate-right" size={26} color={COLORS.cyan} />
+          <Pressable style={[styles.ctrlBtn, styles.ctrlBtnRotate]} onPress={rotatePiece}>
+            <MaterialCommunityIcons name="rotate-right" size={26} color={COLORS.white} />
           </Pressable>
           <Pressable style={styles.ctrlBtn} onPressIn={moveRight}>
-            <Ionicons name="chevron-forward" size={26} color={COLORS.textPrimary} />
+            <Ionicons name="chevron-forward" size={26} color={COLORS.white} />
           </Pressable>
         </View>
         <View style={styles.controlRow}>
           <Pressable style={styles.ctrlBtn} onPressIn={softDrop}>
-            <Ionicons name="chevron-down" size={26} color={COLORS.textPrimary} />
+            <Ionicons name="chevron-down" size={26} color={COLORS.white} />
           </Pressable>
-          <Pressable style={[styles.ctrlBtn, styles.ctrlBtnCenter, { borderColor: COLORS.purple + '44', backgroundColor: COLORS.purple + '11' }]} onPress={hardDrop}>
-            <MaterialCommunityIcons name="arrow-collapse-down" size={24} color={COLORS.purple} />
+          <Pressable style={[styles.ctrlBtn, styles.ctrlBtnDrop]} onPress={hardDrop}>
+            <MaterialCommunityIcons name="arrow-collapse-down" size={24} color={COLORS.white} />
           </Pressable>
           <View style={styles.ctrlBtn} />
         </View>
@@ -313,29 +297,37 @@ export default function BattleScreen() {
 
       {status === 'countdown' && (
         <View style={[StyleSheet.absoluteFill, styles.overlay]}>
+          <LinearGradient colors={['rgba(0,26,90,0.94)', 'rgba(74,0,26,0.94)']} style={StyleSheet.absoluteFill} />
           <Text style={styles.countdownNum}>{countdown > 0 ? countdown : 'GO!'}</Text>
-          <Text style={styles.vsText}>VS #{opponentId}</Text>
+          <Text style={styles.vsLabel}>VS PLAYER {opponentId}</Text>
         </View>
       )}
 
       {isGameOver && (
         <View style={[StyleSheet.absoluteFill, styles.overlay]}>
-          <Text style={[styles.resultTitle, {
-            color: status === 'won' ? COLORS.green : status === 'disconnected' ? COLORS.yellow : COLORS.red,
-          }]}>
-            {status === 'won' ? 'VICTORY!' : status === 'disconnected' ? 'DISCONNECTED' : 'DEFEATED'}
-          </Text>
+          <LinearGradient colors={['rgba(45,0,128,0.97)', 'rgba(18,0,58,0.98)']} style={StyleSheet.absoluteFill} />
+          {status === 'won' && (
+            <Text style={[styles.resultTitle, { color: COLORS.yellow }]}>VICTORY!</Text>
+          )}
+          {status === 'lost' && (
+            <Text style={[styles.resultTitle, { color: COLORS.pink }]}>DEFEATED</Text>
+          )}
+          {status === 'disconnected' && (
+            <Text style={[styles.resultTitle, { color: COLORS.yellow }]}>OPPONENT LEFT</Text>
+          )}
           {status !== 'disconnected' && (
             <>
               <Text style={styles.finalScore}>{score.toLocaleString()}</Text>
-              <Text style={styles.finalScoreLabel}>FINAL SCORE</Text>
+              <Text style={styles.finalLabel}>FINAL SCORE</Text>
             </>
           )}
-          <Pressable style={[styles.overlayBtn, { marginTop: 24 }]} onPress={() => router.replace('/lobby')}>
-            <Text style={styles.overlayBtnText}>REMATCH</Text>
+          <Pressable onPress={() => router.replace('/lobby')} style={{ marginTop: 24 }}>
+            <LinearGradient colors={[COLORS.pink, COLORS.purple]} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }} style={styles.overlayBtn}>
+              <Text style={styles.overlayBtnText}>REMATCH</Text>
+            </LinearGradient>
           </Pressable>
-          <Pressable style={[styles.overlayBtn, { marginTop: 12, backgroundColor: 'transparent', borderColor: COLORS.textSecondary }]} onPress={() => router.replace('/')}>
-            <Text style={[styles.overlayBtnText, { color: COLORS.textSecondary }]}>MENU</Text>
+          <Pressable style={styles.overlayBtnGhost} onPress={() => router.replace('/')}>
+            <Text style={styles.overlayBtnGhostText}>MENU</Text>
           </Pressable>
         </View>
       )}
@@ -344,164 +336,69 @@ export default function BattleScreen() {
 }
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: COLORS.bg,
+  root: { flex: 1 },
+  vsBar: {
+    flexDirection: 'row', alignItems: 'center', paddingHorizontal: 12, paddingVertical: 8, gap: 8,
   },
-  topBar: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingHorizontal: 16,
-    paddingVertical: 6,
+  scorePill: {
+    flex: 1, borderRadius: 12, paddingVertical: 8, paddingHorizontal: 12,
+    borderWidth: 1, borderColor: 'rgba(255,255,255,0.12)',
   },
-  iconBtn: {
-    width: 40,
-    height: 40,
-    alignItems: 'center',
-    justifyContent: 'center',
+  scorePillLabel: { fontFamily: 'Orbitron_400Regular', fontSize: 8, color: 'rgba(255,255,255,0.5)', letterSpacing: 2 },
+  scorePillValue: { fontFamily: 'Orbitron_700Bold', fontSize: 16, color: COLORS.white, letterSpacing: 1 },
+  vsIcon: { width: 36, height: 36, alignItems: 'center', justifyContent: 'center' },
+  linesRow: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 10,
+    paddingHorizontal: 12, marginBottom: 4,
   },
-  scoreRow: {
-    alignItems: 'center',
-    gap: 2,
+  linesText: { fontFamily: 'Orbitron_400Regular', fontSize: 9, color: 'rgba(255,255,255,0.4)', letterSpacing: 2 },
+  garbageTag: {
+    backgroundColor: COLORS.orange + 'cc', borderRadius: 8, paddingVertical: 3, paddingHorizontal: 8,
   },
-  scoreText: {
-    fontFamily: 'Orbitron_700Bold',
-    fontSize: 16,
-    color: COLORS.cyan,
-    letterSpacing: 2,
-  },
-  levelText: {
-    fontFamily: 'Orbitron_400Regular',
-    fontSize: 9,
-    color: COLORS.textSecondary,
-    letterSpacing: 2,
-  },
+  garbageTagText: { fontFamily: 'Orbitron_700Bold', fontSize: 9, color: COLORS.white, letterSpacing: 1 },
   gameArea: {
-    flex: 1,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingHorizontal: 8,
-    gap: 4,
+    flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', paddingHorizontal: 6, gap: 6,
   },
-  mySection: {
-    flexDirection: 'row',
-    alignItems: 'flex-end',
-    gap: 4,
+  mySection: { flexDirection: 'row', alignItems: 'flex-end', gap: 4 },
+  garbageCol: { gap: 2, alignSelf: 'flex-end' },
+  garbageBar: { width: 10, height: 20, borderRadius: 3 },
+  divider: { alignItems: 'center', gap: 0, width: 24 },
+  dividerLine: { width: 2, flex: 1 },
+  dividerBolt: {
+    width: 28, height: 28, borderRadius: 14,
+    backgroundColor: 'rgba(255,255,255,0.1)', alignItems: 'center', justifyContent: 'center',
   },
-  garbageIndicator: {
-    gap: 2,
-    alignSelf: 'flex-end',
-    marginBottom: 0,
-  },
-  garbageBar: {
-    width: 10,
-    height: 22,
-    backgroundColor: COLORS.orange,
-    borderRadius: 3,
-    opacity: 0.9,
-  },
-  divider: {
-    alignItems: 'center',
-    gap: 8,
-    paddingHorizontal: 4,
-  },
-  dividerLine: {
-    width: 1,
-    flex: 1,
-    backgroundColor: COLORS.border,
-  },
-  opponentSection: {
-    alignItems: 'center',
-    gap: 8,
-  },
-  opponentLabel: {
-    fontFamily: 'Orbitron_400Regular',
-    fontSize: 9,
-    color: COLORS.textSecondary,
-    letterSpacing: 2,
-  },
-  controls: {
-    paddingHorizontal: 16,
-    gap: 6,
-    paddingTop: 6,
-  },
-  controlRow: {
-    flexDirection: 'row',
-    justifyContent: 'center',
-    gap: 10,
-  },
+  boltText: { fontSize: 14 },
+  opponentSection: { alignItems: 'center', gap: 6 },
+  controls: { paddingHorizontal: 16, gap: 7, paddingTop: 6 },
+  controlRow: { flexDirection: 'row', justifyContent: 'center', gap: 10 },
   ctrlBtn: {
-    width: 60,
-    height: 48,
-    backgroundColor: COLORS.bgCard,
-    borderRadius: 10,
-    borderWidth: 1,
-    borderColor: COLORS.border,
-    alignItems: 'center',
-    justifyContent: 'center',
+    width: 60, height: 48, borderRadius: 12,
+    backgroundColor: 'rgba(255,255,255,0.1)', borderWidth: 1, borderColor: 'rgba(255,255,255,0.15)',
+    alignItems: 'center', justifyContent: 'center',
   },
-  ctrlBtnCenter: {
-    width: 72,
-    borderColor: COLORS.cyan + '44',
-    backgroundColor: COLORS.cyan + '11',
-  },
-  overlay: {
-    backgroundColor: 'rgba(10,10,15,0.92)',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 8,
-  },
+  ctrlBtnRotate: { width: 74, backgroundColor: 'rgba(255,61,205,0.25)', borderColor: 'rgba(255,61,205,0.4)' },
+  ctrlBtnDrop: { width: 74, backgroundColor: 'rgba(196,77,255,0.25)', borderColor: 'rgba(196,77,255,0.4)' },
+  overlay: { alignItems: 'center', justifyContent: 'center', gap: 8 },
   countdownNum: {
-    fontFamily: 'Orbitron_900Black',
-    fontSize: 80,
-    color: COLORS.cyan,
-    letterSpacing: 4,
-    textShadowColor: COLORS.cyan,
-    textShadowOffset: { width: 0, height: 0 },
-    textShadowRadius: 30,
+    fontFamily: 'Orbitron_900Black', fontSize: 88, color: COLORS.white,
+    letterSpacing: 4, textShadowColor: COLORS.pink, textShadowOffset: { width: 0, height: 0 }, textShadowRadius: 32,
   },
-  vsText: {
-    fontFamily: 'Orbitron_400Regular',
-    fontSize: 14,
-    color: COLORS.textSecondary,
-    letterSpacing: 3,
-  },
+  vsLabel: { fontFamily: 'Orbitron_400Regular', fontSize: 13, color: 'rgba(255,255,255,0.5)', letterSpacing: 3 },
   resultTitle: {
-    fontFamily: 'Orbitron_900Black',
-    fontSize: 36,
-    letterSpacing: 4,
-    textShadowOffset: { width: 0, height: 0 },
-    textShadowRadius: 20,
-    marginBottom: 8,
+    fontFamily: 'Orbitron_900Black', fontSize: 38, letterSpacing: 4,
+    textShadowOffset: { width: 0, height: 0 }, textShadowRadius: 24, marginBottom: 8,
   },
-  finalScore: {
-    fontFamily: 'Orbitron_900Black',
-    fontSize: 48,
-    color: COLORS.textPrimary,
-    letterSpacing: 4,
-  },
-  finalScoreLabel: {
-    fontFamily: 'Orbitron_400Regular',
-    fontSize: 10,
-    color: COLORS.textSecondary,
-    letterSpacing: 3,
-  },
+  finalScore: { fontFamily: 'Orbitron_900Black', fontSize: 52, color: COLORS.white, letterSpacing: 4 },
+  finalLabel: { fontFamily: 'Orbitron_400Regular', fontSize: 10, color: 'rgba(255,255,255,0.5)', letterSpacing: 3 },
   overlayBtn: {
-    paddingVertical: 14,
-    paddingHorizontal: 40,
-    borderRadius: 10,
-    backgroundColor: COLORS.cyan,
-    borderWidth: 1,
-    borderColor: COLORS.cyan,
-    minWidth: 200,
-    alignItems: 'center',
+    paddingVertical: 16, paddingHorizontal: 44, borderRadius: 16, minWidth: 220, alignItems: 'center',
+    shadowColor: COLORS.pink, shadowOpacity: 0.6, shadowRadius: 16, shadowOffset: { width: 0, height: 4 }, elevation: 10,
   },
-  overlayBtnText: {
-    fontFamily: 'Orbitron_700Bold',
-    fontSize: 13,
-    color: COLORS.bg,
-    letterSpacing: 3,
+  overlayBtnText: { fontFamily: 'Orbitron_700Bold', fontSize: 15, color: COLORS.white, letterSpacing: 3 },
+  overlayBtnGhost: {
+    paddingVertical: 12, paddingHorizontal: 32, borderRadius: 12, borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.2)', minWidth: 160, alignItems: 'center', marginTop: 6,
   },
+  overlayBtnGhostText: { fontFamily: 'Orbitron_400Regular', fontSize: 12, color: 'rgba(255,255,255,0.5)', letterSpacing: 2 },
 });

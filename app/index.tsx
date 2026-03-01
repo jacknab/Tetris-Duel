@@ -3,6 +3,7 @@ import {
   View, Text, StyleSheet, Pressable, Platform,
   Animated, Dimensions,
 } from 'react-native';
+import { LinearGradient } from 'expo-linear-gradient';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
 import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
@@ -10,48 +11,27 @@ import * as Haptics from 'expo-haptics';
 import { usePlayer } from '@/context/PlayerContext';
 import COLORS from '@/constants/colors';
 
-const { width } = Dimensions.get('window');
-
-function GridBackground() {
-  const cols = 10;
-  const rows = 20;
-  return (
-    <View style={[StyleSheet.absoluteFill, { pointerEvents: 'none' }]}>
-      {Array.from({ length: rows }).map((_, r) => (
-        <View key={r} style={{ flexDirection: 'row', flex: 1 }}>
-          {Array.from({ length: cols }).map((_, c) => (
-            <View key={c} style={{
-              flex: 1,
-              borderWidth: 0.3,
-              borderColor: COLORS.textDim,
-              opacity: 0.4,
-            }} />
-          ))}
-        </View>
-      ))}
-    </View>
-  );
-}
+const { width: SW } = Dimensions.get('window');
 
 export default function HomeScreen() {
   const insets = useSafeAreaInsets();
   const { playerId, wsReady } = usePlayer();
   const pulseAnim = useRef(new Animated.Value(1)).current;
-  const glowAnim = useRef(new Animated.Value(0)).current;
+  const floatAnim = useRef(new Animated.Value(0)).current;
   const topInset = Platform.OS === 'web' ? 67 : insets.top;
   const bottomInset = Platform.OS === 'web' ? 34 : insets.bottom;
 
   useEffect(() => {
     Animated.loop(
       Animated.sequence([
-        Animated.timing(pulseAnim, { toValue: 1.04, duration: 1200, useNativeDriver: true }),
-        Animated.timing(pulseAnim, { toValue: 1, duration: 1200, useNativeDriver: true }),
+        Animated.timing(pulseAnim, { toValue: 1.06, duration: 1000, useNativeDriver: true }),
+        Animated.timing(pulseAnim, { toValue: 1, duration: 1000, useNativeDriver: true }),
       ])
     ).start();
     Animated.loop(
       Animated.sequence([
-        Animated.timing(glowAnim, { toValue: 1, duration: 1800, useNativeDriver: true }),
-        Animated.timing(glowAnim, { toValue: 0, duration: 1800, useNativeDriver: true }),
+        Animated.timing(floatAnim, { toValue: -8, duration: 1400, useNativeDriver: true }),
+        Animated.timing(floatAnim, { toValue: 0, duration: 1400, useNativeDriver: true }),
       ])
     ).start();
   }, []);
@@ -66,105 +46,173 @@ export default function HomeScreen() {
     router.push('/lobby');
   };
 
-  const idGlowOpacity = glowAnim.interpolate({ inputRange: [0, 1], outputRange: [0.6, 1] });
-
   return (
-    <View style={[styles.container, { paddingTop: topInset, paddingBottom: bottomInset }]}>
-      <GridBackground />
+    <LinearGradient
+      colors={['#2d0080', '#12003a', '#001a5a']}
+      locations={[0, 0.5, 1]}
+      style={[styles.container, { paddingTop: topInset, paddingBottom: bottomInset }]}
+    >
+      <View style={styles.decorLeft} />
+      <View style={styles.decorRight} />
 
       <View style={styles.header}>
-        <Animated.Text style={[styles.logo, { transform: [{ scale: pulseAnim }] }]}>
+        <Animated.Text style={[styles.logo, { transform: [{ translateY: floatAnim }] }]}>
           TETRA
         </Animated.Text>
         <Text style={styles.logoSub}>BATTLE</Text>
+        <View style={styles.logoDivider} />
       </View>
 
-      <View style={styles.idCard}>
-        <Text style={styles.idLabel}>YOUR PLAYER ID</Text>
-        <Animated.Text style={[styles.idValue, { opacity: idGlowOpacity }]}>
-          {playerId ?? '-----'}
-        </Animated.Text>
-        <View style={styles.statusRow}>
-          <View style={[styles.dot, { backgroundColor: wsReady ? COLORS.green : COLORS.red }]} />
-          <Text style={styles.statusText}>{wsReady ? 'ONLINE' : 'CONNECTING...'}</Text>
+      <View style={styles.idSection}>
+        <View style={styles.idCard}>
+          <LinearGradient
+            colors={['rgba(255,255,255,0.12)', 'rgba(255,255,255,0.04)']}
+            style={StyleSheet.absoluteFill}
+          />
+          <View style={styles.idTopRow}>
+            <View style={[styles.dot, { backgroundColor: wsReady ? COLORS.green : COLORS.red }]} />
+            <Text style={styles.idLabel}>YOUR PLAYER ID</Text>
+          </View>
+          <Animated.Text style={[styles.idValue, { transform: [{ scale: pulseAnim }] }]}>
+            {playerId ?? '-----'}
+          </Animated.Text>
+          <Text style={styles.idHint}>Share this ID to play with friends</Text>
         </View>
-        <Text style={styles.idHint}>Share this ID to play with friends</Text>
       </View>
 
       <View style={styles.buttons}>
         <Pressable
-          style={({ pressed }) => [styles.btn, styles.btnPrimary, { opacity: pressed ? 0.8 : 1, transform: [{ scale: pressed ? 0.97 : 1 }] }]}
+          style={({ pressed }) => [{ transform: [{ scale: pressed ? 0.96 : 1 }] }]}
           onPress={handleSolo}
         >
-          <Ionicons name="game-controller" size={22} color={COLORS.bg} />
-          <Text style={[styles.btnText, { color: COLORS.bg }]}>SOLO MODE</Text>
+          <LinearGradient
+            colors={['#ff3dcd', '#c44dff']}
+            start={{ x: 0, y: 0 }}
+            end={{ x: 1, y: 0 }}
+            style={styles.btn}
+          >
+            <Ionicons name="game-controller" size={24} color={COLORS.white} />
+            <Text style={styles.btnText}>SOLO MODE</Text>
+          </LinearGradient>
         </Pressable>
 
         <Pressable
-          style={({ pressed }) => [styles.btn, styles.btnSecondary, {
-            opacity: pressed ? 0.8 : 1,
-            transform: [{ scale: pressed ? 0.97 : 1 }],
-          }]}
+          style={({ pressed }) => [{ transform: [{ scale: pressed ? 0.96 : 1 }] }]}
           onPress={handleMulti}
         >
-          <MaterialCommunityIcons name="sword-cross" size={22} color={COLORS.cyan} />
-          <Text style={[styles.btnText, { color: COLORS.cyan }]}>BATTLE</Text>
+          <LinearGradient
+            colors={['#4d8bff', '#00e5ff']}
+            start={{ x: 0, y: 0 }}
+            end={{ x: 1, y: 0 }}
+            style={styles.btn}
+          >
+            <MaterialCommunityIcons name="sword-cross" size={24} color={COLORS.white} />
+            <Text style={styles.btnText}>BATTLE MODE</Text>
+          </LinearGradient>
         </Pressable>
       </View>
 
-      <View style={styles.legend}>
-        {[
-          { label: 'CLEAR 2', desc: 'send 1 line' },
-          { label: 'CLEAR 3', desc: 'send 2 lines' },
-          { label: 'TETRIS', desc: 'send 4 lines' },
-        ].map(item => (
-          <View key={item.label} style={styles.legendItem}>
-            <Text style={styles.legendLabel}>{item.label}</Text>
-            <Text style={styles.legendDesc}>{item.desc}</Text>
-          </View>
-        ))}
+      <View style={styles.garbage}>
+        <Text style={styles.garbageTitle}>GARBAGE RULES</Text>
+        <View style={styles.garbageRow}>
+          {[
+            { lines: '2', send: '1', color: COLORS.blue },
+            { lines: '3', send: '2', color: COLORS.purple },
+            { lines: '4', send: '4', color: COLORS.pink },
+          ].map(item => (
+            <LinearGradient
+              key={item.lines}
+              colors={[item.color + 'cc', item.color + '55']}
+              style={styles.garbageCard}
+            >
+              <Text style={styles.garbageLines}>×{item.lines}</Text>
+              <Text style={styles.garbageArrow}>↓</Text>
+              <Text style={styles.garbageSend}>+{item.send}</Text>
+            </LinearGradient>
+          ))}
+        </View>
       </View>
-    </View>
+    </LinearGradient>
   );
 }
 
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: COLORS.bg,
-    alignItems: 'center',
+    paddingHorizontal: 20,
     justifyContent: 'space-between',
-    paddingHorizontal: 24,
+  },
+  decorLeft: {
+    position: 'absolute',
+    top: 0,
+    left: -60,
+    width: 200,
+    height: 200,
+    borderRadius: 100,
+    backgroundColor: '#ff3dcd',
+    opacity: 0.12,
+  },
+  decorRight: {
+    position: 'absolute',
+    top: 60,
+    right: -80,
+    width: 250,
+    height: 250,
+    borderRadius: 125,
+    backgroundColor: '#4d8bff',
+    opacity: 0.12,
   },
   header: {
     alignItems: 'center',
-    paddingTop: 12,
+    paddingTop: 8,
+    gap: 2,
   },
   logo: {
-    fontSize: 52,
+    fontSize: 56,
     fontFamily: 'Orbitron_900Black',
-    color: COLORS.cyan,
-    letterSpacing: 8,
-    textShadowColor: COLORS.cyan,
+    color: COLORS.white,
+    letterSpacing: 10,
+    textShadowColor: '#ff3dcd',
     textShadowOffset: { width: 0, height: 0 },
-    textShadowRadius: 20,
+    textShadowRadius: 24,
   },
   logoSub: {
-    fontSize: 18,
+    fontSize: 20,
     fontFamily: 'Orbitron_700Bold',
-    color: COLORS.purple,
-    letterSpacing: 12,
+    color: '#ff3dcd',
+    letterSpacing: 14,
     marginTop: -8,
+  },
+  logoDivider: {
+    width: 60,
+    height: 3,
+    borderRadius: 2,
+    backgroundColor: '#ff3dcd',
+    marginTop: 10,
+    opacity: 0.7,
+  },
+  idSection: {
+    alignItems: 'center',
   },
   idCard: {
     width: '100%',
-    backgroundColor: COLORS.bgCard,
-    borderRadius: 16,
-    borderWidth: 1,
-    borderColor: COLORS.cyan + '44',
+    borderRadius: 20,
+    borderWidth: 1.5,
+    borderColor: 'rgba(255,255,255,0.18)',
     padding: 24,
     alignItems: 'center',
+    gap: 6,
+    overflow: 'hidden',
+  },
+  idTopRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
     gap: 8,
+  },
+  dot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
   },
   idLabel: {
     fontSize: 10,
@@ -173,87 +221,80 @@ const styles = StyleSheet.create({
     letterSpacing: 3,
   },
   idValue: {
-    fontSize: 48,
+    fontSize: 52,
     fontFamily: 'Orbitron_900Black',
-    color: COLORS.cyan,
-    letterSpacing: 6,
-    textShadowColor: COLORS.cyan,
+    color: COLORS.white,
+    letterSpacing: 8,
+    textShadowColor: '#ff3dcd',
     textShadowOffset: { width: 0, height: 0 },
-    textShadowRadius: 15,
-  },
-  statusRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-  },
-  dot: {
-    width: 6,
-    height: 6,
-    borderRadius: 3,
-  },
-  statusText: {
-    fontSize: 9,
-    fontFamily: 'Orbitron_400Regular',
-    color: COLORS.textSecondary,
-    letterSpacing: 2,
+    textShadowRadius: 20,
   },
   idHint: {
     fontSize: 10,
     fontFamily: 'Orbitron_400Regular',
-    color: COLORS.textDim,
+    color: COLORS.textSecondary,
     letterSpacing: 1,
-    marginTop: 4,
   },
   buttons: {
-    width: '100%',
-    gap: 12,
+    gap: 14,
   },
   btn: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
     paddingVertical: 18,
-    borderRadius: 12,
-    gap: 10,
-  },
-  btnPrimary: {
-    backgroundColor: COLORS.cyan,
-  },
-  btnSecondary: {
-    backgroundColor: 'transparent',
-    borderWidth: 1.5,
-    borderColor: COLORS.cyan,
+    borderRadius: 16,
+    gap: 12,
+    shadowColor: '#ff3dcd',
+    shadowOpacity: 0.5,
+    shadowRadius: 12,
+    shadowOffset: { width: 0, height: 4 },
+    elevation: 8,
   },
   btnText: {
-    fontSize: 14,
+    fontSize: 16,
     fontFamily: 'Orbitron_700Bold',
+    color: COLORS.white,
     letterSpacing: 3,
   },
-  legend: {
-    flexDirection: 'row',
-    gap: 12,
-    marginBottom: 8,
-  },
-  legendItem: {
-    flex: 1,
+  garbage: {
     alignItems: 'center',
-    backgroundColor: COLORS.bgCard,
-    borderRadius: 8,
-    padding: 10,
-    borderWidth: 1,
-    borderColor: COLORS.border,
-    gap: 4,
+    gap: 10,
+    marginBottom: 4,
   },
-  legendLabel: {
-    fontSize: 8,
+  garbageTitle: {
+    fontSize: 9,
     fontFamily: 'Orbitron_700Bold',
-    color: COLORS.yellow,
-    letterSpacing: 1,
-  },
-  legendDesc: {
-    fontSize: 8,
-    fontFamily: 'Orbitron_400Regular',
     color: COLORS.textSecondary,
-    letterSpacing: 0.5,
+    letterSpacing: 4,
+  },
+  garbageRow: {
+    flexDirection: 'row',
+    gap: 10,
+    width: '100%',
+  },
+  garbageCard: {
+    flex: 1,
+    borderRadius: 12,
+    padding: 12,
+    alignItems: 'center',
+    gap: 2,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.1)',
+  },
+  garbageLines: {
+    fontSize: 18,
+    fontFamily: 'Orbitron_900Black',
+    color: COLORS.white,
+  },
+  garbageArrow: {
+    fontSize: 10,
+    color: COLORS.textSecondary,
+  },
+  garbageSend: {
+    fontSize: 13,
+    fontFamily: 'Orbitron_700Bold',
+    color: COLORS.white,
+    letterSpacing: 1,
   },
 });

@@ -4,6 +4,7 @@ import * as SplashScreen from "expo-splash-screen";
 import React, { useEffect, useRef, useState } from "react";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
 import { View, Text, StyleSheet, Pressable, Modal } from "react-native";
+import { LinearGradient } from "expo-linear-gradient";
 import { ErrorBoundary } from "@/components/ErrorBoundary";
 import { queryClient } from "@/lib/query-client";
 import { PlayerProvider, usePlayer } from "@/context/PlayerContext";
@@ -17,24 +18,19 @@ SplashScreen.preventAutoHideAsync();
 function GlobalInviteHandler() {
   const { onWsEvent, sendWs } = usePlayer();
   const [invite, setInvite] = useState<{ fromId: string; roomId: string } | null>(null);
-  const inviteRef = useRef<{ fromId: string; roomId: string } | null>(null);
 
   useEffect(() => {
     const unsubInvite = onWsEvent('invited', (data: any) => {
-      inviteRef.current = { fromId: data.fromId, roomId: data.roomId };
       setInvite({ fromId: data.fromId, roomId: data.roomId });
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
     });
-
     const unsubStart = onWsEvent('game_start', (data: any) => {
       setInvite(null);
-      inviteRef.current = null;
       router.push({
         pathname: '/battle',
         params: { roomId: data.roomId, opponentId: data.opponentId },
       });
     });
-
     return () => { unsubInvite(); unsubStart(); };
   }, [onWsEvent]);
 
@@ -48,7 +44,6 @@ function GlobalInviteHandler() {
     if (!invite) return;
     sendWs({ type: 'respond_invite', roomId: invite.roomId, accept: false });
     setInvite(null);
-    inviteRef.current = null;
   };
 
   if (!invite) return null;
@@ -56,19 +51,32 @@ function GlobalInviteHandler() {
   return (
     <Modal transparent animationType="fade" visible={!!invite}>
       <View style={modalStyles.overlay}>
+        <LinearGradient
+          colors={['rgba(45,0,128,0.96)', 'rgba(74,0,26,0.97)']}
+          style={StyleSheet.absoluteFill}
+        />
         <View style={modalStyles.card}>
-          <MaterialCommunityIcons name="sword-cross" size={44} color={COLORS.cyan} />
+          <LinearGradient
+            colors={['rgba(255,255,255,0.1)', 'rgba(255,255,255,0.02)']}
+            style={StyleSheet.absoluteFill}
+          />
+          <View style={modalStyles.icon}>
+            <LinearGradient colors={[COLORS.pink, COLORS.purple]} style={StyleSheet.absoluteFill} />
+            <MaterialCommunityIcons name="sword-cross" size={36} color={COLORS.white} />
+          </View>
           <Text style={modalStyles.title}>CHALLENGE!</Text>
-          <Text style={modalStyles.sub}>
+          <Text style={modalStyles.fromLine}>
             Player <Text style={{ color: COLORS.cyan, fontFamily: 'Orbitron_700Bold' }}>{invite.fromId}</Text>
           </Text>
-          <Text style={modalStyles.sub}>wants to battle you</Text>
+          <Text style={modalStyles.sub}>wants to battle you!</Text>
           <View style={modalStyles.actions}>
-            <Pressable style={[modalStyles.btn, { backgroundColor: COLORS.cyan }]} onPress={handleAccept}>
-              <Text style={[modalStyles.btnText, { color: COLORS.bg }]}>ACCEPT</Text>
+            <Pressable style={({ pressed }) => [{ flex: 1, opacity: pressed ? 0.85 : 1 }]} onPress={handleAccept}>
+              <LinearGradient colors={[COLORS.green + 'ee', '#00b84a']} style={modalStyles.btn}>
+                <Text style={modalStyles.btnText}>ACCEPT</Text>
+              </LinearGradient>
             </Pressable>
-            <Pressable style={[modalStyles.btn, { borderColor: COLORS.red, borderWidth: 1.5 }]} onPress={handleDecline}>
-              <Text style={[modalStyles.btnText, { color: COLORS.red }]}>DECLINE</Text>
+            <Pressable style={({ pressed }) => [modalStyles.btnDecline, { opacity: pressed ? 0.85 : 1 }]} onPress={handleDecline}>
+              <Text style={[modalStyles.btnText, { color: COLORS.pink }]}>DECLINE</Text>
             </Pressable>
           </View>
         </View>
@@ -79,56 +87,35 @@ function GlobalInviteHandler() {
 
 const modalStyles = StyleSheet.create({
   overlay: {
-    flex: 1,
-    backgroundColor: 'rgba(10,10,15,0.88)',
-    alignItems: 'center',
-    justifyContent: 'center',
-    padding: 32,
+    flex: 1, alignItems: 'center', justifyContent: 'center', padding: 28,
   },
   card: {
-    width: '100%',
-    backgroundColor: COLORS.bgCard,
-    borderRadius: 20,
-    borderWidth: 1.5,
-    borderColor: COLORS.cyan + '55',
-    padding: 32,
-    alignItems: 'center',
-    gap: 8,
+    width: '100%', borderRadius: 24, borderWidth: 1.5,
+    borderColor: 'rgba(255,255,255,0.15)', padding: 28,
+    alignItems: 'center', gap: 8, overflow: 'hidden',
+  },
+  icon: {
+    width: 72, height: 72, borderRadius: 36, alignItems: 'center', justifyContent: 'center',
+    marginBottom: 4, overflow: 'hidden',
+    shadowColor: COLORS.pink, shadowOpacity: 0.7, shadowRadius: 20, shadowOffset: { width: 0, height: 4 },
+    elevation: 12,
   },
   title: {
-    fontFamily: 'Orbitron_900Black',
-    fontSize: 26,
-    color: COLORS.cyan,
-    letterSpacing: 4,
-    textShadowColor: COLORS.cyan,
-    textShadowOffset: { width: 0, height: 0 },
-    textShadowRadius: 14,
-    marginTop: 4,
+    fontFamily: 'Orbitron_900Black', fontSize: 28, color: COLORS.white, letterSpacing: 4,
+    textShadowColor: COLORS.pink, textShadowOffset: { width: 0, height: 0 }, textShadowRadius: 18,
   },
-  sub: {
-    fontFamily: 'Orbitron_400Regular',
-    fontSize: 12,
-    color: COLORS.textPrimary,
-    letterSpacing: 1,
-  },
-  actions: {
-    flexDirection: 'row',
-    gap: 12,
-    marginTop: 20,
-    width: '100%',
-  },
+  fromLine: { fontFamily: 'Orbitron_400Regular', fontSize: 13, color: COLORS.white, letterSpacing: 1 },
+  sub: { fontFamily: 'Orbitron_400Regular', fontSize: 10, color: 'rgba(255,255,255,0.45)', letterSpacing: 0.5 },
+  actions: { flexDirection: 'row', gap: 12, marginTop: 20, width: '100%' },
   btn: {
-    flex: 1,
-    paddingVertical: 14,
-    borderRadius: 10,
-    alignItems: 'center',
-    justifyContent: 'center',
+    borderRadius: 14, paddingVertical: 15, alignItems: 'center', justifyContent: 'center',
+    shadowColor: COLORS.green, shadowOpacity: 0.5, shadowRadius: 12, shadowOffset: { width: 0, height: 4 }, elevation: 8,
   },
-  btnText: {
-    fontFamily: 'Orbitron_700Bold',
-    fontSize: 13,
-    letterSpacing: 2,
+  btnDecline: {
+    flex: 1, borderRadius: 14, paddingVertical: 15, alignItems: 'center', justifyContent: 'center',
+    borderWidth: 1.5, borderColor: COLORS.pink + '66',
   },
+  btnText: { fontFamily: 'Orbitron_700Bold', fontSize: 14, color: COLORS.white, letterSpacing: 2 },
 });
 
 function RootLayoutNav() {
