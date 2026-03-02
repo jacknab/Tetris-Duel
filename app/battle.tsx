@@ -47,6 +47,7 @@ export default function BattleScreen() {
   const [opponentBoard, setOpponentBoard] = useState<Board>(createBoard);
   const [opponentScore, setOpponentScore] = useState(0);
   const [garbageQueue, setGarbageQueue] = useState(0);
+  const [clearedRows, setClearedRows] = useState<number[]>([]);
 
   const boardRef = useRef<Board>(createBoard());
   const pieceRef = useRef<Piece | null>(null);
@@ -86,6 +87,7 @@ export default function BattleScreen() {
   }, [score, status, broadcastBoard]);
 
   const spawnNext = useCallback(() => {
+    setClearedRows([]);
     const type = nextTypeRef.current;
     const newPiece = spawnPiece(type);
     nextTypeRef.current = randomPieceType();
@@ -109,10 +111,11 @@ export default function BattleScreen() {
   const lockAndNext = useCallback(() => {
     if (!pieceRef.current) return;
     const locked = lockPiece(boardRef.current, pieceRef.current);
-    const { board: cleared, linesCleared } = clearLines(locked);
+    const { board: cleared, linesCleared, clearedRows: newClearedRows } = clearLines(locked);
     boardRef.current = cleared;
     pieceRef.current = null;
     if (linesCleared > 0) {
+      setClearedRows(newClearedRows);
       scoreRef.current += calcScore(linesCleared, levelRef.current);
       totalLinesRef.current += linesCleared;
       levelRef.current = calcLevel(totalLinesRef.current);
@@ -274,7 +277,7 @@ export default function BattleScreen() {
               ))}
             </View>
           )}
-          <TetrisBoard board={board} currentPiece={piece} cellSize={cellSize} />
+          <TetrisBoard board={board} currentPiece={piece} cellSize={cellSize} clearedRows={clearedRows} />
         </View>
 
         <View style={styles.divider}>

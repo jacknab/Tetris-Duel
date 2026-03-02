@@ -1,5 +1,5 @@
-import React, { memo } from 'react';
-import { View, StyleSheet, Platform } from 'react-native';
+import React, { memo, useEffect, useRef, useState } from 'react';
+import { View, StyleSheet, Platform, Animated } from 'react-native';
 import { Board, Piece, getPieceMatrix, getGhostY, BOARD_COLS, BOARD_ROWS } from '@/lib/tetris';
 import COLORS from '@/constants/colors';
 
@@ -8,15 +8,91 @@ interface Props {
   currentPiece: Piece | null;
   showGhost?: boolean;
   cellSize: number;
+  clearedRows?: number[];
 }
 
-interface BlockProps {
+interface Particle {
+  id: number;
+  x: Animated.Value;
+  y: Animated.Value;
+  opacity: Animated.Value;
   color: string;
-  shine: string;
-  cellSize: number;
-  isGhost?: boolean;
-  isGarbage?: boolean;
 }
+
+const Explosion = memo(({ row, cellSize }: { row: number; cellSize: number }) => {
+  const [particles, setParticles] = useState<Particle[]>([]);
+  
+  useEffect(() => {
+    const newParticles: Particle[] = [];
+    const particleCount = 12;
+    
+    for (let i = 0; i < particleCount; i++) {
+      const startX = (Math.random() * BOARD_COLS) * cellSize;
+      const startY = row * cellSize;
+      
+      const p: Particle = {
+        id: Math.random(),
+        x: new Animated.Value(startX),
+        y: new Animated.Value(startY),
+        opacity: new Animated.Value(1),
+        color: Object.values(COLORS.pieceColors)[Math.floor(Math.random() * 7) + 1] as string,
+      };
+      
+      newParticles.push(p);
+      
+      const angle = (Math.random() * Math.PI * 2);
+      const velocity = 50 + Math.random() * 100;
+      const destX = startX + Math.cos(angle) * velocity;
+      const destY = startY + Math.sin(angle) * velocity;
+      
+      Animated.parallel([
+        Animated.timing(p.x, {
+          toValue: destX,
+          duration: 600,
+          useNativeDriver: true,
+        }),
+        Animated.timing(p.y, {
+          toValue: destY,
+          duration: 600,
+          useNativeDriver: true,
+        }),
+        Animated.timing(p.opacity, {
+          toValue: 0,
+          duration: 600,
+          useNativeDriver: true,
+        })
+      ]).start();
+    }
+    
+    setParticles(newParticles);
+    const timer = setTimeout(() => setParticles([]), 700);
+    return () => clearTimeout(timer);
+  }, [row, cellSize]);
+
+  return (
+    <View style={StyleSheet.absoluteFill} pointerEvents="none">
+      {particles.map(p => (
+        <Animated.View
+          key={p.id}
+          style={[
+            styles.particle,
+            {
+              backgroundColor: p.color,
+              width: cellSize * 0.4,
+              height: cellSize * 0.4,
+              borderRadius: cellSize * 0.2,
+              opacity: p.opacity,
+              transform: [
+                { translateX: p.x },
+                { translateY: p.y }
+              ]
+            }
+          ]}
+        />
+      ))}
+    </View>
+  );
+});
 
 const Block = memo(({ color, shine, cellSize, isGhost, isGarbage }: BlockProps) => {
   const radius = cellSize * 0.28;
@@ -64,7 +140,7 @@ const Block = memo(({ color, shine, cellSize, isGhost, isGarbage }: BlockProps) 
 
 Block.displayName = 'Block';
 
-const TetrisBoard = memo(({ board, currentPiece, showGhost = true, cellSize }: Props) => {
+const TetrisBoard = memo(({ board, currentPiece, showGhost = true, cellSize, clearedRows = [] }: Props) => {
   const displayBoard: number[][] = board.map(row => [...row]);
 
   let ghostY: number | null = null;
@@ -106,6 +182,9 @@ const TetrisBoard = memo(({ board, currentPiece, showGhost = true, cellSize }: P
   return (
     <View style={[styles.boardWrapper, { width: boardW + 8, height: boardH + 8 }]}>
       <View style={[styles.board, { width: boardW, height: boardH }]}>
+        {clearedRows.map((row, idx) => (
+          <Explosion key={`${row}-${idx}`} row={row} cellSize={cellSize} />
+        ))}
         {displayBoard.map((row, rIdx) => (
           <View key={rIdx} style={styles.row}>
             {row.map((cell, cIdx) => {
@@ -199,5 +278,9 @@ const styles = StyleSheet.create({
     width: '32%',
     height: '28%',
     backgroundColor: 'rgba(255,255,255,0.55)',
+  },
+  particle: {
+    position: 'absolute',
+    zIndex: 10,
   },
 });

@@ -74,6 +74,7 @@ export default function GameScreen() {
   const [totalLines, setTotalLines] = useState(0);
   const [level, setLevel] = useState(1);
   const [status, setStatus] = useState<GameStatus>('idle');
+  const [clearedRows, setClearedRows] = useState<number[]>([]);
 
   const boardRef = useRef<Board>(createBoard());
   const pieceRef = useRef<Piece | null>(null);
@@ -106,6 +107,7 @@ export default function GameScreen() {
   }, []);
 
   const spawnNext = useCallback(() => {
+    setClearedRows([]);
     const type = nextTypeRef.current;
     const newPiece = spawnPiece(type);
     nextTypeRef.current = randomPieceType();
@@ -123,10 +125,11 @@ export default function GameScreen() {
   const lockAndNext = useCallback(() => {
     if (!pieceRef.current) return;
     const locked = lockPiece(boardRef.current, pieceRef.current);
-    const { board: cleared, linesCleared } = clearLines(locked);
+    const { board: cleared, linesCleared, clearedRows: newClearedRows } = clearLines(locked);
     boardRef.current = cleared;
     pieceRef.current = null;
     if (linesCleared > 0) {
+      setClearedRows(newClearedRows);
       scoreRef.current += calcScore(linesCleared, levelRef.current);
       totalLinesRef.current += linesCleared;
       levelRef.current = calcLevel(totalLinesRef.current);
@@ -259,7 +262,7 @@ export default function GameScreen() {
           </View>
         </View>
 
-        <TetrisBoard board={board} currentPiece={piece} cellSize={cellSize} />
+        <TetrisBoard board={board} currentPiece={piece} cellSize={cellSize} clearedRows={clearedRows} />
 
         <View style={styles.rightPanel} />
       </View>

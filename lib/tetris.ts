@@ -97,13 +97,19 @@ export function lockPiece(board: Board, piece: Piece): Board {
   return newBoard;
 }
 
-export function clearLines(board: Board): { board: Board; linesCleared: number } {
-  const newBoard = board.filter(row => row.some(cell => cell === 0)) as Board;
-  const linesCleared = BOARD_ROWS - newBoard.length;
+export function clearLines(board: Board): { board: Board; linesCleared: number; clearedRows: number[] } {
+  const clearedRows: number[] = [];
+  const newBoard = board.filter((row, idx) => {
+    const isFull = row.every(cell => cell !== 0);
+    if (isFull) clearedRows.push(idx);
+    return !isFull;
+  }) as Board;
+  
+  const linesCleared = clearedRows.length;
   const empty = Array.from({ length: linesCleared }, () =>
     Array(BOARD_COLS).fill(0) as Cell[]
   );
-  return { board: [...empty, ...newBoard] as Board, linesCleared };
+  return { board: [...empty, ...newBoard] as Board, linesCleared, clearedRows };
 }
 
 export function randomPieceType(): number {
